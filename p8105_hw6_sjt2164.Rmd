@@ -1,0 +1,52 @@
+---
+title: "HW6"
+output: github_document
+author: Serena (sjt2164)
+---
+```{r}
+library(tidyverse)
+```
+
+##Problem 1
+
+```{r weather}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+```{r summary, include=FALSE}
+weather_df
+#365 observations, 6 variables
+#chr: name, id = Central Park data only
+#date: date = 2017 data from Jan 1st to Dec 31st.
+#dbl: prcp, tmax, tmin
+
+summary(weather_df)
+#no NAs for pcrp, tmax, tmin
+```
+
+_Prompt_
+
+* `tmax` as the response 
+* `tmin` as the predictor
+* interested in distribution of two quantities estimated from:
+  * 𝑟̂ 2
+  * log(𝛽̂ 0∗𝛽̂ 1)
+  
+* Use 5000 bootstrap samples
+* For each bootstrap sample, produce estimates of these two quantities. 
+* Plot the distribution of your estimates, and describe these in words. 
+
+* Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for 𝑟̂ 2 and log(𝛽̂ 0∗𝛽̂ 1)
+* Use broom::glance() for extracting 𝑟̂ 2 from a fitted regression
+* Use broom::tidy() (with some additional wrangling) to compute log(𝛽̂ 0∗𝛽̂ 1)
+
