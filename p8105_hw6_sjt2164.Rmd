@@ -7,7 +7,7 @@ author: Serena (sjt2164)
 library(tidyverse)
 ```
 
-##Problem 1
+## Problem 1
 
 ```{r weather}
 weather_df = 
@@ -49,4 +49,40 @@ _Prompt_
 * Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for 𝑟̂ 2 and log(𝛽̂ 0∗𝛽̂ 1)
 * Use broom::glance() for extracting 𝑟̂ 2 from a fitted regression
 * Use broom::tidy() (with some additional wrangling) to compute log(𝛽̂ 0∗𝛽̂ 1)
+
+
+## Problem 2: Homicides in 50 large U.S. cities 
+
+```{r Homicide data}
+#Import from github repo, read article.
+```
+
+* Create a `city_state` variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved (ex. `solved`: y/n)
+
+* Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO (they don’t report victim race) 
+* Omit Tulsa, AL (is a data entry mistake)
+* Limit your analysis to those for whom `victim_race` is `white` or `black`. 
+* Be sure that `victim_age` is numeric.
+
+_*_Baltimore, MD_
+
+* For the city of Baltimore, MD, use the `glm` function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors. 
+* Save output of `glm` as an R object; apply the `broom::tidy` to this object
+* Obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
+
+_Glm for the Cities_
+
+* Now run glm for each of the cities in your dataset
+* Extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. 
+* Do this within a “tidy” pipeline, making use of `purrr::map`, list columns, and `unnest` as necessary to create a dataframe with estimated ORs and CIs for each city.
+
+*Plot*
+
+```{r plot}
+
+```
+
+* Shows the estimated ORs and CIs for each city on plot
+* Organize cities according to estimated OR
+* Comment on the plot
 
