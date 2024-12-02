@@ -8,6 +8,7 @@ This homework uses the `tidyverse` library with `set.set(1)` for reproducibility
 
 ```{r, include = FALSE}
 library(tidyverse)
+library(kableExtra)
 
 set.seed(1)
 ```
@@ -119,23 +120,132 @@ The 95% confidence interval for log(𝛽̂ 0∗𝛽̂ 1) is (1.964, 2.059).
 ## Problem 2: Homicides in 50 large U.S. cities 
 
 ```{r Homicide data}
-#Import from github repo, read article.
+homicide = read_csv("./data/homicide-data.csv", na = c("NA", ".", "")) |>
+  janitor::clean_names()
+
+#52,179 observations and 12 variables
+#victim_age has numeric values and some "unknown"
+
+summary(homicide)
+#char = uid, victim_last, victim_first, victim_race, victim_age, victim_sex, city, state, and disposition
+#dbl = reported_date, lat, lon
+
+homicide |> distinct(victim_race) #Hispanic, White, Other, Black, Asian, and Unknown
+homicide |> distinct(victim_sex) #male, female, unknown
+homicide |> distinct(victim_age) #102 distinct ages, including unknown 
+homicide |> distinct(city) #50
+homicide |> distinct(state) #28 states in abbrev. (wisconsin = "wI"?)
+
+#unsolved homicides (those for which the disposition is “Closed without arrest” or “Open/No arrest”).
+
+homicide |> count(disposition) #3 categories: closed without arrest (2922), closed by arrest (25674), open/no arrest (23583). Expect unsolved = 26505
+
+#sorting reported_date: 2 dates have an extra number (201511105, 201511018)
 ```
 
-* Create a `city_state` variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved (ex. `solved`: y/n)
+**Raw Data**
+The raw data `homicide` has `r nrow(homicide)` observations and `r ncol(homicide)` variables.
 
-* Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO (they don’t report victim race) 
-* Omit Tulsa, AL (is a data entry mistake)
+* Identity variables include 
+  * `uid` (`r count(distinct(homicide, uid))`), 
+  * Name of victim (`victim_first` and `victim_last`)
+  * `victim_race` (Hispanic, White, Other, Black, Asian, and Unknown), 
+  * `victim_age` (includes Unknown)
+  * `victim_sex` (Male, Female, Unknown)
+* Date variable includes `reported_date` in the format YYYYMMDD. 2 entries does not follow this format (has an extra number).
+* Location variables include `city` (50), `state`, latitude (`lat`), and longitude (`lon`). 
+* The last variable is `disposition` (`r count(distinct(homicide, disposition))` categories)
+
+**Data Cleaning**
+
+* Fixed two `reported_date` entries that had an extra number
+* Fixed abbreviation for Wisconsin
+* created new `city_state` variable
+* Created a `city_state` variable (e.g. “Baltimore, MD”)
+* Created a binary variable `homicide_solved` indicating whether the homicide is solved (yes vs. no)
+* Ensured `victim_age` is numeric
+* Omited cities Dallas, TX; Phoenix, AZ; and Kansas City, MO (they don’t report victim race) 
+* Omited Tulsa, AL (is a data entry mistake)
 * Limit your analysis to those for whom `victim_race` is `white` or `black`. 
-* Be sure that `victim_age` is numeric.
+
+
+```{r fix}
+homicide_data = homicide |>
+  mutate(
+    reported_date = case_match(reported_date,
+      201511105 ~ 20151105,
+      201511018 ~ 20151018,
+      .default = reported_date),
+    reported_date = as.Date.character(reported_date, format = "%Y%m%d"),
+     state = case_match(state,
+      'wI' ~ 'WI',
+      .default = state),
+    victim_race = as.factor(victim_race),
+    victim_sex = as.factor(victim_sex),
+    victim_age = as.numeric(victim_age),
+    city = as.factor(city),
+    state = as.factor(state),
+    disposition = as.factor(disposition)) |>
+  mutate(
+    city_state = paste(city, state, sep = ", "), #create city_state var
+    homicide_solved = ifelse(disposition %in% c("Closed without arrest", "Open/No arrest"), 0, 1)) |> # 0 = unresolved, 1 = resolved
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"), #48507
+    victim_race %in% c("White", "Black"))
+  
+#Formatted date and checked so that:  
+#GERALD A. BUNCH: 201511105 -> 20151105 -> 2015-11-05 
+#LUIS SALAS: 201511018 -> 20151018 ->2015-10-18
+#wisconsin = WI
+
+#39693 observations
+```
 
 _*_Baltimore, MD_
 
-* For the city of Baltimore, MD, use the `glm` function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors. 
-* Save output of `glm` as an R object; apply the `broom::tidy` to this object
-* Obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
+* For the city of Baltimore, MD, the `glm` function is used to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors. 
+  * Output of `glm` is saved as a csv file (Baltimore_glm.csv) and `broom::tidy` was applied to this object
+
+```{r baltimore}
+baltimore_df = homicide_data |>
+  filter(city_state == "Baltimore, MD") |>
+  mutate(
+    victim_race = fct_relevel(victim_race, "White"), #reference = White
+    victim_sex = fct_relevel(victim_sex, "Male")) |>  #reference = Male
+  select(homicide_solved, victim_age, victim_sex, victim_race)
+
+fit_logistic = 
+  baltimore_df |> 
+  glm(homicide_solved ~ victim_age + victim_sex + victim_race , data = _, family = binomial()) 
+
+glm_output = fit_logistic |> 
+  broom::tidy() |> 
+  mutate( 
+    OR = exp(estimate), #obtain estimate
+    CI_lower = exp(estimate - (1.96*std.error)) , #lower CI
+    CI_upper = exp(estimate + (1.96*std.error)), #upper CI
+    ) |>
+  select(term, OR, CI_lower, CI_upper) |>
+  knitr::kable(digits = 3)
+
+ #output of glm saved as csv
+print(glm_output)
+write.csv(glm_output, "Baltimore_glm.csv")
+
+#95% CI = estimate ± (critical value * standard error)
+```
+
+**Solving homicides comparing male victims to female victims keeping all other variables fixed**
+
+Based on the output, the OR estimate for solved homicides comparing female vs. male is 2.35 and its 95% confidence interval is (1.793, 3.081), adjusting for age and race. 
+
+The odds of solving homicides for females is 2.35 times higher than the odds of solving homicides for males. We are 95% confident that the true odds of solving homicides comparing males to females is between 1.793 and 3.081. (Reference = Male, White)
 
 _Glm for the Cities_
+
+```{r city glm}
+
+```
 
 * Now run glm for each of the cities in your dataset
 * Extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. 
