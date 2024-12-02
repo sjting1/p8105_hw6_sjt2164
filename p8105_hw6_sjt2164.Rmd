@@ -207,6 +207,7 @@ _*_Baltimore, MD_
   * Output of `glm` is saved as a csv file (Baltimore_glm.csv) and `broom::tidy` was applied to this object
 
 ```{r baltimore}
+
 baltimore_df = homicide_data |>
   filter(city_state == "Baltimore, MD") |>
   mutate(
@@ -245,21 +246,59 @@ _Glm for the Cities_
 
 ```{r city glm}
 
+homicide_data |> count(victim_sex) #41 unknown sex
+
+#set reference = White and Male
+city_df = homicide_data |>
+  filter(
+    victim_sex %in% c("Male", "Female")) |> #keep only male and female
+  mutate(
+    victim_race = fct_relevel(victim_race, "White"), 
+    victim_sex = fct_relevel(victim_sex, "Male")) |>
+  select(city_state, homicide_solved, victim_age, victim_sex, victim_race) |>
+    group_by(city_state) |>
+  nest() |>
+  mutate(
+    city_model = map(data, ~glm(homicide_solved ~ victim_age + victim_sex + victim_race , data = ., family = binomial())),
+    city_results = map(city_model, broom::tidy)) |>
+  unnest(city_results) |> 
+  mutate( 
+    OR = exp(estimate), #obtain estimate
+    CI_lower = exp(estimate - (1.96*std.error)) , #lower CI
+    CI_upper = exp(estimate + (1.96*std.error)), #upper CI
+    ) |>
+  select(city_state, term, OR, CI_lower, CI_upper) |>
+  filter(
+    term == "victim_sexFemale") |>
+   rename(OR_sex = OR) |>
+  select(-term) 
+
+knitr::kable(city_df, digits = 3)
+
+city_df |> distinct(city_state) #47 city_states
+
 ```
 
-* Now run glm for each of the cities in your dataset
-* Extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. 
-* Do this within a “tidy” pipeline, making use of `purrr::map`, list columns, and `unnest` as necessary to create a dataframe with estimated ORs and CIs for each city.
+* Ran glm for each of the cities in your dataset
+* Extracted the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims.
 
 *Plot*
 
 ```{r plot 1}
-
+city_plot = city_df |>
+  ggplot(aes(x = reorder(city_state, OR_sex), y = OR_sex)) + 
+  geom_point() +  
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Solved Homicides Female vs. Male Across 47 Cities",
+  x = "Location", 
+  y = "Odds Ratio with CI")
+  
+city_plot
 ```
 
-* Shows the estimated ORs and CIs for each city on plot
-* Organize cities according to estimated OR
-* Comment on the plot
+The plot shows the estimated ORs and CIs for each city with cities organized by estimated OR.
+Albuquerque, NM has the smallest OR and New York, NY has the highest. New York, NY also has a wide confidence interval, which is seen in San Bernardino, CA and Long Beach, CA as well. 
 
 ## Problem 3: Effects of variables on a child’s birthweight
 
