@@ -3,8 +3,13 @@ title: "HW6"
 output: github_document
 author: Serena (sjt2164)
 ---
-```{r}
+
+This homework uses the `tidyverse` library with `set.set(1)` for reproducibility.
+
+```{r, include = FALSE}
 library(tidyverse)
+
+set.seed(1)
 ```
 
 ## Problem 1
@@ -21,6 +26,8 @@ weather_df =
     tmin = tmin / 10,
     tmax = tmax / 10) %>%
   select(name, id, everything())
+
+#Central Park data for year 2017 with info on precipitation, max and min temp
 ```
 
 ```{r summary, include=FALSE}
@@ -34,21 +41,79 @@ summary(weather_df)
 #no NAs for pcrp, tmax, tmin
 ```
 
-_Prompt_
-
-* `tmax` as the response 
-* `tmin` as the predictor
-* interested in distribution of two quantities estimated from:
+* For each boostrap sample, interested in distribution of :
   * 𝑟̂ 2
   * log(𝛽̂ 0∗𝛽̂ 1)
-  
-* Use 5000 bootstrap samples
-* For each bootstrap sample, produce estimates of these two quantities. 
-* Plot the distribution of your estimates, and describe these in words. 
 
-* Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for 𝑟̂ 2 and log(𝛽̂ 0∗𝛽̂ 1)
-* Use broom::glance() for extracting 𝑟̂ 2 from a fitted regression
-* Use broom::tidy() (with some additional wrangling) to compute log(𝛽̂ 0∗𝛽̂ 1)
+```{r bootstrap}
+Bootstrap = weather_df |> 
+  modelr::bootstrap(n = 5000) |> #5000 bootstrap samples 
+  mutate(
+    models = map(strap, \(df) lm(tmax ~ tmin, data = df) ), # y = tmax, x = tmin
+    results = map(models, broom::tidy), #for log betas
+    r_squared = map(models, broom::glance)) |> #shows R^2
+   # log_betas = log(intercept * 
+  unnest(results, r_squared) |> 
+  janitor::clean_names() |>
+  select(id, term, estimate, r_squared) |>
+   mutate(
+    term = ifelse(term == "(Intercept)", "intercept", term)) |>
+  pivot_wider(
+    names_from = "term", 
+    values_from = "estimate") |>
+  mutate(
+    log_beta0xbeta1 = log(intercept * tmin)) |> #log of the product of beta0 and beta1
+  select(id, r_squared, log_beta0xbeta1)
+
+Bootstrap
+```
+
+##### Distribution of 𝑟̂ 2 estimates
+
+```{r estimate plots}
+Bootstrap |>
+  ggplot(aes(x = id, y = r_squared)) + 
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "lm") +
+  labs(title = "R squared distribution for 5000 bootstrap samples",
+       x = "Boostrap Sample Id",
+       y = "R squared") 
+  
+```
+
+##### Distribution of log(𝛽̂ 0∗𝛽̂ 1) estimates
+
+```{r}
+Bootstrap |>
+  ggplot(aes(x = id, y = log_beta0xbeta1)) + 
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "lm") +
+  labs(title = "Log(beta0 * beta1) distribution for 5000 bootstrap samples",
+       x = "Boostrap Sample Id",
+       y = "Log(beta0 * beta1") 
+
+```
+
+Both plots indicate an uniformly distribution of the estimates. The distribution of the R squared estimates has a higher density around 0.90 and 0.92. In comparison, the  log(𝛽̂ 0∗𝛽̂ distribution is more concentrated between 2.00 and 2.05. 
+       
+       
+##### Confidence Intervals
+
+```{r}
+CI_estimates = Bootstrap |> 
+  summarize(
+    R2_ci_lower = quantile(r_squared, 0.025), 
+    R2_ci_upper = quantile(r_squared, 0.975),
+    logBetas_ci_lower = quantile(log_beta0xbeta1, 0.025), 
+    logBetas_ci_upper = quantile(log_beta0xbeta1, 0.975)) 
+
+CI_estimates
+```
+
+
+Using the 5000 bootstrap estimates, we find that the 95% confidence interval for 𝑟̂ 2 is (0.894, 0.927).
+
+The 95% confidence interval for log(𝛽̂ 0∗𝛽̂ 1) is (1.964, 2.059).
 
 
 ## Problem 2: Homicides in 50 large U.S. cities 
