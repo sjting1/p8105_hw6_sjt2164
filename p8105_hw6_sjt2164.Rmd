@@ -8,8 +8,8 @@ This homework uses the `tidyverse` library with `set.set(1)` for reproducibility
 
 ```{r, include = FALSE}
 library(tidyverse)
-library(kableExtra)
-
+library(modelr)
+library(mgcv)
 set.seed(1)
 ```
 
@@ -306,61 +306,182 @@ Albuquerque, NM has the smallest OR and New York, NY has the highest. New York, 
 
 bwt_df = read_csv("./data/birthweight.csv", na = c("NA", ".", ""))
 
-#4342 observations, 20 variables
+#4342 observations, 20 variables. All variables are dbls.
 
 ```
 
-Dataset has ~4000 children and includes the following variables:
+Outcome Variable: 
+* `bwt`: baby’s birth weight (grams)
 
+Categorical Predictors:
 * `babysex`: baby’s sex (male = 1, female = 2)
+* `frace`: father’s race (1 = White, 2 = Black, 3 = Asian, 4 = Puerto Rican, 8 = Other, 9 = Unknown)
+* `malform`: presence of malformations that could affect weight (0 = absent, 1 = present)
+* `mrace`: mother’s race (1 = White, 2 = Black, 3 = Asian, 4 = Puerto Rican, 8 = Other)
+
+Numeric Predictors:
 * `bhead`: baby’s head circumference at birth (centimeters)
 * `blength`: baby’s length at birth (centimeteres)
-* `bwt`: baby’s birth weight (grams)
 * `delwt`: mother’s weight at delivery (pounds)
 * `fincome`: family monthly income (in hundreds, rounded)
-* `frace`: father’s race (1 = White, 2 = Black, 3 = Asian, 4 = Puerto Rican, 8 = Other, 9 = Unknown)
 * `gaweeks`: gestational age in weeks
-* `malform`: presence of malformations that could affect weight (0 = absent, 1 = present)
 * `menarche`: mother’s age at menarche (years)
 * `mheigth`: mother’s height (inches)
 * `momage`: mother’s age at delivery (years)
-* `mrace`: mother’s race (1 = White, 2 = Black, 3 = Asian, 4 = Puerto Rican, 8 = Other)
 * `parity`: number of live births prior to this pregnancy
 * `pnumlbw`: previous number of low birth weight babies
-* `pnumgsa`: number of prior small for gestational age babies
+* `pnumsga`: number of prior small for gestational age babies
 * `ppbmi`: mother’s pre-pregnancy BMI
 * `ppwt`: mother’s pre-pregnancy weight (pounds)
+*  `wtgain`: mother’s weight gain during pregnancy (pounds)
 * `smoken`: average number of cigarettes smoked per day during pregnancy
-* wtgain`: mother’s weight gain during pregnancy (pounds)
 
-#### Data Cleaning
+
+
+#### Data Cleaning for Regression Analysis
 ```{r bwt clean}
-#clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
+#convert numeric to factor where appropriate, check for missing data, etc.)
+
+bwt_clean = bwt_df |>
+  mutate( #convert categorical variables as factors. Keep continuous var as numeric (dbl).
+    babysex = as.factor(babysex),
+    frace = as.factor(frace),
+    malform = as.factor(malform),
+    mrace = as.factor(mrace),
+    preterm = ifelse(gaweeks < 37, "yes", "no"), #created a preterm variable
+    babysex = case_match(babysex,
+      "1" ~ "Male",
+      "2" ~ "Female"))
+
+summary(bwt_clean)
+  
 ```
 
-#### Regression Model
+#### Proposed Regression Model
+
+Based on a published [article](https://www.frontiersin.org/journals/pediatrics/articles/10.3389/fped.2022.899954/full) from the Frontiers, "gestational age, fetal sex, preterm birth, mother's height, and pre-pregnancy BMI were the 5 most important predictors for infant birth weight." This finding was based on 9 machine learning models. 
+
+Thus, I propose a regression model for birthweight using these predictors. There is no specific variable in the dataset for preterm birth. In the dataset, relevant predictors for the outcome `bwt` would be:
+
+* `gaweeks`: gestational age in weeks
+* `babysex`: baby’s sex (male = 1, female = 2)
+* `mheight`: mother’s height (inches)
+* `ppbmi`: mother’s pre-pregnancy BMI
+
+Created binary `preterm` variable, defined as < 37 weeks of gestational age (derived from `gaweeks`).
 
 ```{r Model}
+fit = lm(bwt ~ gaweeks + babysex + mheight + ppbmi + preterm, data = bwt_clean) 
 
+summary(fit)
+
+fit |> 
+  broom::tidy() |>
+  knitr::kable(digits = 3)
+
+#female and preterm as reference
 ```
 
-Propose a regression model for birthweight. 
-* Model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. 
-* Describe modeling process
+**Modeling Process**
 
 ```{r plot 2}
+Q3_plot = bwt_clean |>
+  modelr::add_residuals(fit) |>
+  modelr::add_predictions(fit) |>
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point() +
+  labs(title = "Distribution of residuals vs. fitted values",
+       x = "Fitted values",
+       y = "Log(beta0 * beta1") 
 
+Q3_plot
 ```
 
-* Show a plot of model residuals against fitted values – use `add_predictions` and `add_residuals` in making this plot.
+After running the model using the proposed predictors, I plotted the model residuals against fitted values. The plot shows data that is concentrated between fitted values of 3000 and 3500. We see that the assumption of homoscedasticity and linearity is violated. Decided to use backward selection to find a better model. 
+
+```{r full_model}
+all_variables = lm(bwt ~ bhead + blength + delwt + fincome + gaweeks + menarche + mheight + momage + parity + pnumlbw + pnumsga + ppbmi + ppwt + wtgain + smoken, data = bwt_clean) 
+```
+
+```{r}
+backward_model = step(all_variables, direction = "backward")
+
+#left with model "bwt ~ bhead + blength + delwt + fincome + gaweeks + menarche + mheight + momage + parity + ppwt + smoken" 
+```
+
+```{r final model}
+final_model = lm(bwt ~ bhead + blength + delwt + fincome + gaweeks + menarche + mheight + momage + parity + ppwt + smoken, data = bwt_clean) 
+
+summary(final_model)
+
+final_model |> 
+  broom::tidy() |>
+  knitr::kable(digits = 3)
+```
+
 
 #### Compare your model to two others:
 
-* One using length at birth and gestational age as predictors (main effects only)
+`main_model` = One using length at birth and gestational age as predictors
 
-* One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
+```{r main effects}
+main_model = lm(bwt ~ blength + gaweeks, data = bwt_clean) 
 
-Make this comparison in terms of the cross-validated prediction error; use `crossv_mc` and functions in `purrr` as appropriate.
+summary(main_model)
 
-Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
+main_model |> 
+  broom::tidy() |>
+  knitr::kable(digits = 3)
+```
 
+`second_model` = One using head circumference, length, sex, and all interactions 
+
+```{r second model}
+second_model = lm(bwt ~ bhead + blength + babysex + bhead * blength + bhead * babysex + blength * babysex + blength * babysex * bhead , data = bwt_clean) 
+
+summary(second_model)
+
+second_model |> 
+  broom::tidy() |>
+  knitr::kable(digits = 3)
+```
+
+#### Model Comparisons
+
+```{r}
+cross_valid = 
+  crossv_mc(bwt_clean, 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
+```
+
+```{r}
+cross_valid = 
+  cross_valid |> 
+  mutate(
+    my_mod  = map(train, \(df) lm(bwt ~ bhead + blength + delwt + fincome + gaweeks + menarche + mheight + momage + parity + ppwt + smoken, data = bwt_clean)),
+    main_mod  = map(train, \(df) gam(bwt ~ blength + gaweeks, data = bwt_clean)),
+    second_mod  = map(train, \(df) gam(bwt ~ bhead + blength + babysex + bhead * blength + bhead * babysex + blength * babysex + blength * babysex * bhead , data = bwt_clean))) |> 
+  mutate(
+    rmse_mine = map2_dbl(my_mod, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_main = map2_dbl(main_mod, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_second = map2_dbl(second_mod, test, \(mod, df) rmse(model = mod, data = df)))
+```
+
+Use RMSE to compare models:
+
+```{r}
+cross_valid |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+My final model, which was generated from a backward selection process using `step()` function, has the smallest value for rmse. Second smallest is the model that uses head circumference, length, sex, and all interactions of the 3 variables. The main effects model has the highest rmse. The final model seems to be the most optimal. 
